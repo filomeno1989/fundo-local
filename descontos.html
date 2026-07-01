@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Descontos — Fundo Local</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <nav class="navbar" id="navbar"></nav>
+  <div id="toast" class="toast"></div>
+
+  <div class="main">
+    <div class="flex-between" style="margin-bottom:24px;">
+      <div>
+        <div class="page-title">📅 Descontos Mensais</div>
+        <div class="page-sub">Regista e gere os descontos por mês</div>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-ghost" onclick="exportarLista()">📥 Exportar lista RH</button>
+        <button class="btn btn-primary" onclick="abrirModalNovo()">+ Registar Desconto</button>
+      </div>
+    </div>
+
+    <!-- Filtros de mês/ano -->
+    <div class="card" style="padding:16px;margin-bottom:16px;">
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+        <div class="form-group" style="flex-direction:row;align-items:center;gap:8px;margin:0;">
+          <label style="white-space:nowrap;">Mês:</label>
+          <select id="fil-mes" onchange="carregar()" style="width:140px;">
+            <option value="1">Janeiro</option><option value="2">Fevereiro</option>
+            <option value="3">Março</option><option value="4">Abril</option>
+            <option value="5">Maio</option><option value="6">Junho</option>
+            <option value="7">Julho</option><option value="8">Agosto</option>
+            <option value="9">Setembro</option><option value="10">Outubro</option>
+            <option value="11">Novembro</option><option value="12">Dezembro</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex-direction:row;align-items:center;gap:8px;margin:0;">
+          <label>Ano:</label>
+          <select id="fil-ano" onchange="carregar()" style="width:100px;">
+            <option value="2025">2025</option>
+            <option value="2026" selected>2026</option>
+            <option value="2027">2027</option>
+          </select>
+        </div>
+        <input type="text" id="inp-busca" placeholder="🔍 Pesquisar..." style="flex:1;min-width:180px;" oninput="filtrar()"/>
+        <button class="btn btn-ghost btn-sm" onclick="gerarDescontosQuota()">⚡ Gerar quotas do mês</button>
+      </div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="kpi-grid" style="margin-bottom:20px;">
+      <div class="kpi-card green">
+        <div class="kpi-label">💰 Total descontado</div>
+        <div class="kpi-value" id="kpi-total">—</div>
+        <div class="kpi-sub" id="kpi-mes-label">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">👥 Colaboradores</div>
+        <div class="kpi-value" id="kpi-colab">—</div>
+        <div class="kpi-sub">Com desconto este mês</div>
+      </div>
+      <div class="kpi-card blue">
+        <div class="kpi-label">📋 Registos</div>
+        <div class="kpi-value" id="kpi-registos">—</div>
+        <div class="kpi-sub">Linhas de desconto</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">💳 Quotas (100MT)</div>
+        <div class="kpi-value" id="kpi-quotas">—</div>
+        <div class="kpi-sub">Contribuições mensais</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="flex-between" style="margin-bottom:16px;">
+        <div class="card-title" style="margin-bottom:0;" id="titulo-tabela">Descontos</div>
+        <span id="badge-total" class="badge badge-green"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Colaborador</th>
+              <th>Empréstimo Ref.</th>
+              <th>Valor</th>
+              <th>Mês/Ano</th>
+              <th>Observação</th>
+              <th>Acções</th>
+            </tr>
+          </thead>
+          <tbody id="tb-descontos"></tbody>
+        </table>
+      </div>
+      <div id="sem-resultados" style="display:none;text-align:center;padding:32px;color:var(--text2);">
+        Nenhum desconto registado para este mês.
+        <br><br>
+        <button class="btn btn-primary btn-sm" onclick="abrirModalNovo()">+ Registar primeiro desconto</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal novo desconto -->
+  <div id="modal-novo" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:500;align-items:center;justify-content:center;">
+    <div class="card" style="width:520px;max-height:90vh;overflow-y:auto;">
+      <div class="card-title">+ Registar Desconto</div>
+      <div class="form-grid">
+        <div class="form-group" style="grid-column:1/-1;">
+          <label>Colaborador *</label>
+          <select id="sel-colab" onchange="carregarEmprestimosColab()">
+            <option value="">— Seleccionar —</option>
+          </select>
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label>Empréstimo (opcional — deixa vazio para quota mensal)</label>
+          <select id="sel-emp">
+            <option value="">— Quota mensal (100 MT) —</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Valor (MT) *</label>
+          <input type="number" id="inp-valor" min="0" step="0.01" placeholder="Ex: 1500"/>
+        </div>
+        <div class="form-group">
+          <label>Mês *</label>
+          <select id="inp-mes">
+            <option value="1">Janeiro</option><option value="2">Fevereiro</option>
+            <option value="3">Março</option><option value="4">Abril</option>
+            <option value="5">Maio</option><option value="6">Junho</option>
+            <option value="7">Julho</option><option value="8">Agosto</option>
+            <option value="9">Setembro</option><option value="10">Outubro</option>
+            <option value="11">Novembro</option><option value="12">Dezembro</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Ano *</label>
+          <input type="number" id="inp-ano" value="2026" min="2024" max="2030"/>
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label>Observação</label>
+          <input type="text" id="inp-obs" placeholder="Ex: 2ª parcela, quota mensal..."/>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
+        <button class="btn btn-ghost" onclick="fecharModal('modal-novo')">Cancelar</button>
+        <button class="btn btn-primary" onclick="guardarDesconto()">💾 Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="supabase.js"></script>
+  <script src="auth.js"></script>
+  <script src="tema.js"></script>
+  <script src="utils.js"></script>
+  <script src="nav.js"></script>
+  <script>
+    if (!AUTH.exigir()) {}
+    renderNavbar('descontos');
+
+    const MESES = ['','Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+                   'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+    let todosDescontos = [];
+    let collabMap = {};
+    let emprestimosMap = {};
+    let membros = [];
+
+    function fmt(v) {
+      return Number(v||0).toLocaleString('pt-MZ', { minimumFractionDigits:2, maximumFractionDigits:2 }) + ' MT';
+    }
+
+    // Inicializar filtro com mês actual
+    window.addEventListener('DOMContentLoaded', () => {
+      const agora = new Date();
+      document.getElementById('fil-mes').value = agora.getMonth() + 1;
+      document.getElementById('inp-mes').value = agora.getMonth() + 1;
+    });
+
+    async function carregar() {
+      const mes = document.getElementById('fil-mes').value;
+      const ano = document.getElementById('fil-ano').value;
+
+      const [descontos, collabs, emps, mems] = await Promise.all([
+        db.query('fundo_descontos', `mes=eq.${mes}&ano=eq.${ano}&select=*&order=criado_em.asc`),
+        db.query('collaborators', 'select=id,code,name,department'),
+        db.query('fundo_emprestimos', 'select=id,collaborator_id,valor_total,tipo,valor_parcela'),
+        db.query('fundo_membros', 'contribui=eq.true&select=collaborator_id,quota_mensal')
+      ]);
+
+      todosDescontos = descontos || [];
+      collabMap = {};
+      (collabs||[]).forEach(c => { collabMap[c.id] = c; });
+      emprestimosMap = {};
+      (emps||[]).forEach(e => { emprestimosMap[e.id] = e; });
+      membros = mems || [];
+
+      // Popular selects no modal
+      const selColab = document.getElementById('sel-colab');
+      const membrosSet = new Set(membros.map(m => m.collaborator_id));
+      selColab.innerHTML = '<option value="">— Seleccionar —</option>';
+      (collabs||[]).filter(c => membrosSet.has(c.id)).sort((a,b) => a.name.localeCompare(b.name)).forEach(c => {
+        selColab.innerHTML += `<option value="${c.id}">${c.code} — ${c.name}</option>`;
+      });
+
+      actualizarKPIs(mes, ano);
+      filtrar();
+    }
+
+    function actualizarKPIs(mes, ano) {
+      const total = todosDescontos.reduce((s, d) => s + Number(d.valor), 0);
+      const uniqueColabs = new Set(todosDescontos.map(d => d.collaborator_id)).size;
+      const quotas = todosDescontos.filter(d => !d.emprestimo_id);
+
+      document.getElementById('kpi-total').textContent = fmt(total);
+      document.getElementById('kpi-mes-label').textContent = `${MESES[mes]} ${ano}`;
+      document.getElementById('kpi-colab').textContent = uniqueColabs;
+      document.getElementById('kpi-registos').textContent = todosDescontos.length;
+      document.getElementById('kpi-quotas').textContent = quotas.length;
+      document.getElementById('titulo-tabela').textContent = `Descontos de ${MESES[mes]} ${ano}`;
+      document.getElementById('badge-total').textContent = fmt(total);
+    }
+
+    function filtrar() {
+      const busca = document.getElementById('inp-busca').value.toLowerCase();
+      const lista = todosDescontos.filter(d => {
+        const c = collabMap[d.collaborator_id] || {};
+        return (c.name||'').toLowerCase().includes(busca) || (c.code||'').toLowerCase().includes(busca);
+      });
+      renderTabela(lista);
+    }
+
+    function renderTabela(lista) {
+      const tb = document.getElementById('tb-descontos');
+      const sem = document.getElementById('sem-resultados');
+      if (!lista.length) { tb.innerHTML = ''; sem.style.display = 'block'; return; }
+      sem.style.display = 'none';
+
+      tb.innerHTML = lista.map((d, i) => {
+        const c = collabMap[d.collaborator_id] || {};
+        const e = d.emprestimo_id ? emprestimosMap[d.emprestimo_id] : null;
+        const TIPOS = { emprestimo:'Emprést.', assistencia_medica:'Méd.', assistencia_funebr:'Fúnebre', outro:'Outro' };
+        return `<tr>
+          <td>
+            <span style="font-size:11px;color:var(--text2);">${c.code||''}</span><br>
+            <strong>${c.name||'—'}</strong>
+          </td>
+          <td>
+            ${e ? `<span class="badge badge-amber">${TIPOS[e.tipo]||''} ${fmt(e.valor_total)}</span>` :
+                  '<span class="badge badge-gray">Quota mensal</span>'}
+          </td>
+          <td><strong style="color:var(--amber);">${fmt(d.valor)}</strong></td>
+          <td style="font-size:12px;">${MESES[d.mes]} ${d.ano}</td>
+          <td style="color:var(--text2);font-size:13px;">${d.observacao||'—'}</td>
+          <td>
+            <button class="btn btn-ghost btn-sm" onclick="eliminar(${d.id})" style="color:var(--red);border-color:var(--red);">🗑</button>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    async function carregarEmprestimosColab() {
+      const colabId = parseInt(document.getElementById('sel-colab').value);
+      const selEmp = document.getElementById('sel-emp');
+      selEmp.innerHTML = '<option value="">— Quota mensal (100 MT) —</option>';
+      document.getElementById('inp-valor').value = '100';
+
+      if (!colabId) return;
+
+      const emps = await db.query('fundo_emprestimos',
+        `collaborator_id=eq.${colabId}&estado=in.(activo,parcial)&select=*`);
+      if (Array.isArray(emps)) {
+        emps.forEach(e => {
+          const TIPOS = { emprestimo:'Empréstimo', assistencia_medica:'Assist. Médica', assistencia_funebr:'Assist. Fúnebre', outro:'Outro' };
+          selEmp.innerHTML += `<option value="${e.id}" data-parcela="${e.valor_parcela}">${TIPOS[e.tipo]} — ${fmt(e.valor_total)} (parcela: ${fmt(e.valor_parcela)})</option>`;
+        });
+      }
+
+      selEmp.onchange = () => {
+        const opt = selEmp.selectedOptions[0];
+        const parcela = opt?.dataset?.parcela;
+        document.getElementById('inp-valor').value = parcela ? Number(parcela).toFixed(2) : '100';
+      };
+    }
+
+    function abrirModalNovo() {
+      const mes = document.getElementById('fil-mes').value;
+      const ano = document.getElementById('fil-ano').value;
+      document.getElementById('inp-mes').value = mes;
+      document.getElementById('inp-ano').value = ano;
+      document.getElementById('modal-novo').style.display = 'flex';
+    }
+
+    async function guardarDesconto() {
+      const colabId = parseInt(document.getElementById('sel-colab').value);
+      const empId   = document.getElementById('sel-emp').value;
+      const valor   = parseFloat(document.getElementById('inp-valor').value);
+      const mes     = parseInt(document.getElementById('inp-mes').value);
+      const ano     = parseInt(document.getElementById('inp-ano').value);
+      const obs     = document.getElementById('inp-obs').value;
+
+      if (!colabId || !valor || !mes || !ano) {
+        mostrarToast('Preenche colaborador, valor e mês.', 'erro'); return;
+      }
+
+      const dados = {
+        collaborator_id: colabId,
+        valor, mes, ano,
+        observacao: obs || null
+      };
+      if (empId) dados.emprestimo_id = parseInt(empId);
+
+      const r = await db.insert('fundo_descontos', dados);
+      if (r && !r.error) {
+        // Actualizar estado do empréstimo se necessário
+        if (empId) await actualizarEstadoEmprestimo(parseInt(empId));
+        mostrarToast('Desconto registado!');
+        fecharModal('modal-novo');
+        document.getElementById('sel-colab').value = '';
+        document.getElementById('sel-emp').innerHTML = '<option value="">— Quota mensal (100 MT) —</option>';
+        document.getElementById('inp-valor').value = '100';
+        document.getElementById('inp-obs').value = '';
+        await carregar();
+      } else {
+        mostrarToast('Erro ao guardar. Verifica se já existe desconto para este empréstimo neste mês.', 'erro');
+      }
+    }
+
+    async function actualizarEstadoEmprestimo(empId) {
+      const emp = await db.get('fundo_emprestimos', { id: empId });
+      if (!emp || !emp[0]) return;
+      const e = emp[0];
+      const todos = await db.query('fundo_descontos', `emprestimo_id=eq.${empId}&select=valor`);
+      const pago = (todos||[]).reduce((s, d) => s + Number(d.valor), 0);
+      const saldo = Number(e.valor_total) - pago;
+      let estado = 'activo';
+      if (saldo <= 0) estado = 'liquidado';
+      else if (pago > 0) estado = 'parcial';
+      await db.update('fundo_emprestimos', empId, { estado });
+    }
+
+    async function eliminar(id) {
+      if (!confirm('Eliminar este desconto?')) return;
+      const r = await db.delete('fundo_descontos', id);
+      if (r) { mostrarToast('Eliminado.'); await carregar(); }
+      else mostrarToast('Erro ao eliminar.', 'erro');
+    }
+
+    // Gerar automaticamente as quotas mensais de todos os membros
+    async function gerarDescontosQuota() {
+      const mes = parseInt(document.getElementById('fil-mes').value);
+      const ano = parseInt(document.getElementById('fil-ano').value);
+      if (!confirm(`Gerar quotas de 100 MT para todos os membros em ${MESES[mes]} ${ano}?\nColaboradores já com desconto neste mês serão ignorados.`)) return;
+
+      const jaExistem = new Set(todosDescontos.filter(d => !d.emprestimo_id).map(d => d.collaborator_id));
+      let ok = 0;
+      for (const m of membros) {
+        if (jaExistem.has(m.collaborator_id)) continue;
+        const r = await db.insert('fundo_descontos', {
+          collaborator_id: m.collaborator_id,
+          valor: m.quota_mensal || 100,
+          mes, ano,
+          observacao: 'Quota mensal automática'
+        });
+        if (r && !r.error) ok++;
+      }
+      mostrarToast(`${ok} quotas geradas!`);
+      await carregar();
+    }
+
+    // Exportar lista para o RH (CSV simples)
+    function exportarLista() {
+      const mes = document.getElementById('fil-mes').value;
+      const ano = document.getElementById('fil-ano').value;
+      const linhas = ['Código;Nome;Departamento;Valor (MT);Mês;Ano;Observação'];
+      todosDescontos.forEach(d => {
+        const c = collabMap[d.collaborator_id] || {};
+        linhas.push([
+          c.code||'', c.name||'', c.department||'',
+          Number(d.valor).toFixed(2),
+          MESES[d.mes], d.ano,
+          d.observacao||''
+        ].join(';'));
+      });
+      const blob = new Blob([linhas.join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `descontos_fundo_${MESES[mes]}_${ano}.csv`;
+      a.click();
+      mostrarToast('Lista exportada!');
+    }
+
+    function fecharModal(id) {
+      document.getElementById(id).style.display = 'none';
+    }
+
+    carregar();
+  </script>
+</body>
+</html>

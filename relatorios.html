@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Relatórios — Fundo Local</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <nav class="navbar" id="navbar"></nav>
+  <div id="toast" class="toast"></div>
+
+  <div class="main">
+    <div class="flex-between" style="margin-bottom:24px;">
+      <div>
+        <div class="page-title">📊 Relatórios & Balanço</div>
+        <div class="page-sub">Visão completa do fundo — saldos, pendências RH, dívidas</div>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <select id="fil-ano" onchange="carregar()" style="width:100px;">
+          <option value="2025">2025</option>
+          <option value="2026" selected>2026</option>
+        </select>
+        <button class="btn btn-ghost" onclick="exportarRelatorio()">📥 Exportar CSV</button>
+        <button class="btn btn-primary" onclick="abrirModalMovimento()">+ Registar Movimento</button>
+      </div>
+    </div>
+
+    <!-- KPIs principais -->
+    <div class="kpi-grid" style="margin-bottom:20px;">
+      <div class="kpi-card green">
+        <div class="kpi-label">💰 Saldo Actual do Fundo</div>
+        <div class="kpi-value" id="kpi-saldo">—</div>
+        <div class="kpi-sub">Entradas − Saídas</div>
+      </div>
+      <div class="kpi-card blue">
+        <div class="kpi-label">📥 Total Entradas</div>
+        <div class="kpi-value" id="kpi-entradas">—</div>
+        <div class="kpi-sub">Reembolsos + quotas</div>
+      </div>
+      <div class="kpi-card red">
+        <div class="kpi-label">📤 Total Saídas</div>
+        <div class="kpi-value" id="kpi-saidas">—</div>
+        <div class="kpi-sub">Empréstimos concedidos</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">⏳ Pendente RH</div>
+        <div class="kpi-value" id="kpi-pendente">—</div>
+        <div class="kpi-sub">Ainda não reembolsado</div>
+      </div>
+    </div>
+
+    <!-- Alerta pendente RH -->
+    <div id="alerta-rh" style="display:none;" class="alert alert-warning" style="margin-bottom:20px;">
+      ⚠️ O RH ainda tem reembolsos pendentes. Ver detalhe na tabela de movimentos abaixo.
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;">
+
+      <!-- Resumo por mês -->
+      <div class="card">
+        <div class="card-title">📅 Resumo por Mês</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Mês</th>
+                <th>Descontos</th>
+                <th>Colaboradores</th>
+                <th>Estado RH</th>
+              </tr>
+            </thead>
+            <tbody id="tb-mensal"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Quem ainda deve -->
+      <div class="card">
+        <div class="card-title">💸 Dívidas em Aberto</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Colaborador</th>
+                <th>Emprestado</th>
+                <th>Saldo Devedor</th>
+                <th>Reimb.?</th>
+              </tr>
+            </thead>
+            <tbody id="tb-dividas"></tbody>
+          </table>
+        </div>
+        <div id="sem-dividas" style="display:none;text-align:center;padding:20px;color:var(--text2);">
+          ✅ Sem dívidas em aberto
+        </div>
+      </div>
+    </div>
+
+    <!-- Movimentos da conta -->
+    <div class="card">
+      <div class="flex-between" style="margin-bottom:16px;">
+        <div class="card-title" style="margin-bottom:0;">💳 Movimentos da Conta</div>
+        <div style="display:flex;gap:8px;">
+          <select id="fil-rh" onchange="filtrarMovimentos()" style="width:180px;">
+            <option value="">Todos</option>
+            <option value="pendente">⏳ Pendente RH</option>
+            <option value="parcial">🔶 Parcial RH</option>
+            <option value="pago">✅ Pago pelo RH</option>
+          </select>
+          <select id="fil-tipo-mov" onchange="filtrarMovimentos()" style="width:140px;">
+            <option value="">Entradas e Saídas</option>
+            <option value="entrada">Entradas</option>
+            <option value="saida">Saídas</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Descrição</th>
+              <th>Tipo</th>
+              <th>Valor</th>
+              <th>Estado RH</th>
+              <th>Acções</th>
+            </tr>
+          </thead>
+          <tbody id="tb-movimentos"></tbody>
+        </table>
+      </div>
+      <div id="sem-movimentos" style="display:none;text-align:center;padding:32px;color:var(--text2);">
+        Sem movimentos registados. <button class="btn btn-primary btn-sm" onclick="abrirModalMovimento()" style="margin-left:10px;">+ Registar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal novo movimento -->
+  <div id="modal-movimento" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:500;align-items:center;justify-content:center;">
+    <div class="card" style="width:520px;">
+      <div class="card-title">+ Registar Movimento da Conta</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Tipo *</label>
+          <select id="mov-tipo" onchange="toggleRH()">
+            <option value="entrada">📥 Entrada (reembolso RH / outro)</option>
+            <option value="saida">📤 Saída (empréstimo / despesa)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Data *</label>
+          <input type="date" id="mov-data"/>
+        </div>
+        <div class="form-group">
+          <label>Valor (MT) *</label>
+          <input type="number" id="mov-valor" min="0" step="0.01" placeholder="Ex: 89725"/>
+        </div>
+        <div class="form-group">
+          <label>Mês de referência</label>
+          <select id="mov-mes">
+            <option value="">— Geral —</option>
+            <option value="1">Janeiro</option><option value="2">Fevereiro</option>
+            <option value="3">Março</option><option value="4">Abril</option>
+            <option value="5">Maio</option><option value="6">Junho</option>
+            <option value="7">Julho</option><option value="8">Agosto</option>
+            <option value="9">Setembro</option><option value="10">Outubro</option>
+            <option value="11">Novembro</option><option value="12">Dezembro</option>
+          </select>
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label>Descrição *</label>
+          <input type="text" id="mov-desc" placeholder="Ex: Reembolso Janeiro 2026 pelo RH"/>
+        </div>
+        <div class="form-group" id="grp-rh-estado">
+          <label>Estado do Reembolso RH</label>
+          <select id="mov-rh-estado">
+            <option value="pendente">⏳ Pendente</option>
+            <option value="parcial">🔶 Parcial</option>
+            <option value="pago">✅ Pago</option>
+          </select>
+        </div>
+        <div class="form-group" id="grp-rh-data">
+          <label>Data de pagamento RH</label>
+          <input type="date" id="mov-rh-data"/>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
+        <button class="btn btn-ghost" onclick="fecharModal('modal-movimento')">Cancelar</button>
+        <button class="btn btn-primary" onclick="guardarMovimento()">💾 Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal actualizar RH -->
+  <div id="modal-rh" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:500;align-items:center;justify-content:center;">
+    <div class="card" style="width:400px;">
+      <div class="card-title">🔄 Actualizar Estado RH</div>
+      <input type="hidden" id="rh-mov-id"/>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Estado</label>
+          <select id="rh-estado">
+            <option value="pendente">⏳ Pendente</option>
+            <option value="parcial">🔶 Parcial</option>
+            <option value="pago">✅ Pago</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Data de pagamento</label>
+          <input type="date" id="rh-data"/>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
+        <button class="btn btn-ghost" onclick="fecharModal('modal-rh')">Cancelar</button>
+        <button class="btn btn-success" onclick="actualizarRH()">✅ Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="supabase.js"></script>
+  <script src="auth.js"></script>
+  <script src="tema.js"></script>
+  <script src="utils.js"></script>
+  <script src="nav.js"></script>
+  <script>
+    if (!AUTH.exigir()) {}
+    renderNavbar('relatorios');
+
+    const MESES = ['','Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+                   'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+    let todosMovimentos = [];
+    let collabMap = {};
+    let descontosMap = {};
+
+    function fmt(v) {
+      return Number(v||0).toLocaleString('pt-MZ', { minimumFractionDigits:2, maximumFractionDigits:2 }) + ' MT';
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('mov-data').value = dataHoje();
+    });
+
+    async function carregar() {
+      const ano = document.getElementById('fil-ano').value;
+
+      const [movimentos, emps, descontos, collabs] = await Promise.all([
+        db.query('fundo_conta', `select=*&order=data.desc`),
+        db.query('fundo_emprestimos', `estado=in.(activo,parcial)&select=*`),
+        db.query('fundo_descontos', `select=emprestimo_id,valor`),
+        db.query('collaborators', 'select=id,code,name')
+      ]);
+
+      todosMovimentos = movimentos || [];
+      collabMap = {};
+      (collabs||[]).forEach(c => { collabMap[c.id] = c; });
+
+      descontosMap = {};
+      (descontos||[]).forEach(d => {
+        if (!descontosMap[d.emprestimo_id]) descontosMap[d.emprestimo_id] = [];
+        descontosMap[d.emprestimo_id].push(d);
+      });
+
+      // KPIs
+      const entradas = todosMovimentos.filter(m => m.tipo === 'entrada').reduce((s,m) => s+Number(m.valor), 0);
+      const saidas   = todosMovimentos.filter(m => m.tipo === 'saida').reduce((s,m)   => s+Number(m.valor), 0);
+      const pendente = todosMovimentos.filter(m => m.tipo === 'entrada' && ['pendente','parcial'].includes(m.rh_estado))
+                                       .reduce((s,m) => s+Number(m.valor), 0);
+      document.getElementById('kpi-saldo').textContent    = fmt(entradas - saidas);
+      document.getElementById('kpi-entradas').textContent = fmt(entradas);
+      document.getElementById('kpi-saidas').textContent   = fmt(saidas);
+      document.getElementById('kpi-pendente').textContent = fmt(pendente);
+
+      if (pendente > 0) document.getElementById('alerta-rh').style.display = 'flex';
+      else              document.getElementById('alerta-rh').style.display = 'none';
+
+      // Resumo mensal — agrupar descontos por mês
+      const todosDesc = await db.query('fundo_descontos', `ano=eq.${ano}&select=mes,valor,collaborator_id`);
+      renderMensal(todosDesc || [], ano);
+
+      // Dívidas
+      renderDividas(emps || []);
+
+      // Movimentos
+      filtrarMovimentos();
+    }
+
+    function renderMensal(descontos, ano) {
+      const por_mes = {};
+      descontos.forEach(d => {
+        if (!por_mes[d.mes]) por_mes[d.mes] = { total: 0, colabs: new Set() };
+        por_mes[d.mes].total += Number(d.valor);
+        por_mes[d.mes].colabs.add(d.collaborator_id);
+      });
+
+      const tb = document.getElementById('tb-mensal');
+      const mesesComDados = Object.keys(por_mes).sort((a,b) => a-b);
+      if (!mesesComDados.length) {
+        tb.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text2);padding:20px;">Sem descontos em ${ano}</td></tr>`;
+        return;
+      }
+
+      tb.innerHTML = mesesComDados.map(mes => {
+        const d = por_mes[mes];
+        // Verificar se há movimento de entrada para este mês
+        const mov = todosMovimentos.find(m => m.tipo === 'entrada' && m.mes_ref == mes && m.ano_ref == ano);
+        const estadoRH = mov ? mov.rh_estado : 'pendente';
+        const badgeRH = { pendente:'badge-red', parcial:'badge-amber', pago:'badge-green' }[estadoRH] || 'badge-gray';
+        const labelRH = { pendente:'⏳ Pendente', parcial:'🔶 Parcial', pago:'✅ Pago' }[estadoRH] || estadoRH;
+        return `<tr>
+          <td><strong>${MESES[mes]}</strong></td>
+          <td>${fmt(d.total)}</td>
+          <td style="text-align:center;">${d.colabs.size}</td>
+          <td><span class="badge ${badgeRH}">${labelRH}</span></td>
+        </tr>`;
+      }).join('');
+    }
+
+    function renderDividas(emps) {
+      const tb = document.getElementById('tb-dividas');
+      const sem = document.getElementById('sem-dividas');
+
+      const dividas = emps.map(e => {
+        const pago = (descontosMap[e.id]||[]).reduce((s,d) => s+Number(d.valor), 0);
+        const saldo = Math.max(0, Number(e.valor_total) - pago);
+        return { ...e, saldo };
+      }).filter(e => e.saldo > 0).sort((a,b) => b.saldo - a.saldo);
+
+      if (!dividas.length) {
+        tb.innerHTML = '';
+        sem.style.display = 'block';
+        return;
+      }
+      sem.style.display = 'none';
+
+      tb.innerHTML = dividas.map(e => {
+        const c = collabMap[e.collaborator_id] || {};
+        return `<tr>
+          <td><span style="font-size:11px;color:var(--text2);">${c.code||''}</span><br><strong>${c.name||'—'}</strong></td>
+          <td>${fmt(e.valor_total)}</td>
+          <td><strong style="color:var(--red);">${fmt(e.saldo)}</strong></td>
+          <td>${e.reembolsavel ? '<span class="badge badge-green">Sim</span>' : '<span class="badge badge-red">Não</span>'}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    function filtrarMovimentos() {
+      const filRH   = document.getElementById('fil-rh').value;
+      const filTipo = document.getElementById('fil-tipo-mov').value;
+
+      const lista = todosMovimentos.filter(m => {
+        const rhOk   = !filRH   || m.rh_estado === filRH;
+        const tipoOk = !filTipo || m.tipo === filTipo;
+        return rhOk && tipoOk;
+      });
+
+      const tb  = document.getElementById('tb-movimentos');
+      const sem = document.getElementById('sem-movimentos');
+
+      if (!lista.length) { tb.innerHTML = ''; sem.style.display = 'block'; return; }
+      sem.style.display = 'none';
+
+      const badgeRH = { pendente:'badge-red', parcial:'badge-amber', pago:'badge-green' };
+      const labelRH = { pendente:'⏳ Pendente', parcial:'🔶 Parcial', pago:'✅ Pago' };
+
+      tb.innerHTML = lista.map(m => `<tr>
+        <td style="font-size:12px;">${formatarData(m.data)}</td>
+        <td>${m.descricao}${m.mes_ref ? ` <span style="color:var(--text2);font-size:12px;">(${MESES[m.mes_ref]})</span>` : ''}</td>
+        <td><span class="badge ${m.tipo==='entrada'?'badge-green':'badge-red'}">${m.tipo==='entrada'?'Entrada':'Saída'}</span></td>
+        <td><strong style="color:${m.tipo==='entrada'?'var(--green)':'var(--red)'};">${m.tipo==='entrada'?'+':'−'}${fmt(m.valor)}</strong></td>
+        <td>
+          ${m.tipo === 'entrada'
+            ? `<span class="badge ${badgeRH[m.rh_estado]||'badge-gray'}">${labelRH[m.rh_estado]||m.rh_estado}</span>`
+            : '<span class="badge badge-gray">N/A</span>'}
+        </td>
+        <td>
+          ${m.tipo === 'entrada' && m.rh_estado !== 'pago'
+            ? `<button class="btn btn-ghost btn-sm" onclick="abrirModalRH(${m.id}, '${m.rh_estado}')">🔄 RH</button>`
+            : ''}
+        </td>
+      </tr>`).join('');
+    }
+
+    function abrirModalMovimento() {
+      document.getElementById('modal-movimento').style.display = 'flex';
+      toggleRH();
+    }
+
+    function toggleRH() {
+      const tipo = document.getElementById('mov-tipo').value;
+      const mostrar = tipo === 'entrada';
+      document.getElementById('grp-rh-estado').style.display = mostrar ? 'flex' : 'none';
+      document.getElementById('grp-rh-data').style.display   = mostrar ? 'flex' : 'none';
+    }
+
+    async function guardarMovimento() {
+      const tipo   = document.getElementById('mov-tipo').value;
+      const data   = document.getElementById('mov-data').value;
+      const valor  = parseFloat(document.getElementById('mov-valor').value);
+      const mes    = document.getElementById('mov-mes').value;
+      const desc   = document.getElementById('mov-desc').value.trim();
+      const rhEst  = document.getElementById('mov-rh-estado').value;
+      const rhData = document.getElementById('mov-rh-data').value;
+
+      if (!data || !valor || !desc) {
+        mostrarToast('Preenche data, valor e descrição.', 'erro'); return;
+      }
+
+      const ano = document.getElementById('fil-ano').value;
+
+      const dados = {
+        tipo, data, valor, descricao: desc,
+        mes_ref: mes ? parseInt(mes) : null,
+        ano_ref: mes ? parseInt(ano) : null,
+        rh_estado: tipo === 'entrada' ? rhEst : null,
+        rh_data_pag: (tipo === 'entrada' && rhData) ? rhData : null
+      };
+
+      const r = await db.insert('fundo_conta', dados);
+      if (r && !r.error) {
+        mostrarToast('Movimento registado!');
+        fecharModal('modal-movimento');
+        document.getElementById('mov-valor').value = '';
+        document.getElementById('mov-desc').value = '';
+        await carregar();
+      } else {
+        mostrarToast('Erro ao guardar.', 'erro');
+      }
+    }
+
+    function abrirModalRH(id, estadoActual) {
+      document.getElementById('rh-mov-id').value = id;
+      document.getElementById('rh-estado').value = estadoActual || 'pendente';
+      document.getElementById('rh-data').value = dataHoje();
+      document.getElementById('modal-rh').style.display = 'flex';
+    }
+
+    async function actualizarRH() {
+      const id     = document.getElementById('rh-mov-id').value;
+      const estado = document.getElementById('rh-estado').value;
+      const data   = document.getElementById('rh-data').value;
+
+      const r = await db.update('fundo_conta', id, {
+        rh_estado: estado,
+        rh_data_pag: estado === 'pago' ? data : null
+      });
+      if (r && !r.error) {
+        mostrarToast('Estado RH actualizado!');
+        fecharModal('modal-rh');
+        await carregar();
+      } else {
+        mostrarToast('Erro ao actualizar.', 'erro');
+      }
+    }
+
+    function exportarRelatorio() {
+      const ano = document.getElementById('fil-ano').value;
+      const linhas = ['Data;Descrição;Tipo;Valor (MT);Estado RH;Mês Ref.'];
+      todosMovimentos.forEach(m => {
+        linhas.push([
+          m.data, m.descricao, m.tipo,
+          Number(m.valor).toFixed(2),
+          m.rh_estado||'',
+          m.mes_ref ? MESES[m.mes_ref] : ''
+        ].join(';'));
+      });
+      const blob = new Blob([linhas.join('\n')], { type:'text/csv;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `relatorio_fundo_${ano}.csv`;
+      a.click();
+      mostrarToast('Relatório exportado!');
+    }
+
+    function fecharModal(id) {
+      document.getElementById(id).style.display = 'none';
+    }
+
+    carregar();
+  </script>
+</body>
+</html>
