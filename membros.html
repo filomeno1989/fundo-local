@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Membros — Fundo Local</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <nav class="navbar" id="navbar"></nav>
+  <div id="toast" class="toast"></div>
+
+  <div class="main">
+    <div class="flex-between" style="margin-bottom:24px;">
+      <div>
+        <div class="page-title">👥 Membros do Fundo</div>
+        <div class="page-sub">Gere quem contribui com 100 MT/mês</div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <input type="text" id="inp-busca" placeholder="🔍 Pesquisar colaborador..." style="width:260px;" oninput="filtrar()"/>
+        <select id="fil-estado" onchange="filtrar()" style="width:160px;">
+          <option value="">Todos</option>
+          <option value="contribui">✅ Contribui</option>
+          <option value="nao">❌ Não contribui</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- KPIs rápidos -->
+    <div class="kpi-grid" style="margin-bottom:20px;">
+      <div class="kpi-card green">
+        <div class="kpi-label">✅ Contribuintes</div>
+        <div class="kpi-value" id="kpi-contrib">—</div>
+        <div class="kpi-sub" id="kpi-contrib-val">—</div>
+      </div>
+      <div class="kpi-card red">
+        <div class="kpi-label">❌ Não contribuem</div>
+        <div class="kpi-value" id="kpi-nao">—</div>
+        <div class="kpi-sub">Excluídos do fundo</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">👥 Total colaboradores</div>
+        <div class="kpi-value" id="kpi-total">—</div>
+        <div class="kpi-sub">Activos na empresa</div>
+      </div>
+      <div class="kpi-card blue">
+        <div class="kpi-label">📈 Entrada mensal</div>
+        <div class="kpi-value" id="kpi-entrada">—</div>
+        <div class="kpi-sub">100 MT × contribuintes</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <div class="card-title" style="margin-bottom:0;">Lista de Colaboradores</div>
+        <button class="btn btn-primary btn-sm" onclick="abrirModalSincronizar()">⚙️ Sincronizar lista</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Nome</th>
+              <th>Departamento</th>
+              <th>Contribui</th>
+              <th>Desde</th>
+              <th>Quota</th>
+              <th>Acções</th>
+            </tr>
+          </thead>
+          <tbody id="tb-membros"></tbody>
+        </table>
+      </div>
+      <div id="sem-resultados" style="display:none;text-align:center;padding:32px;color:var(--text2);">
+        Nenhum colaborador encontrado.
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal sincronizar -->
+  <div id="modal-sync" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:500;display:none;align-items:center;justify-content:center;">
+    <div class="card" style="width:500px;max-height:80vh;overflow-y:auto;">
+      <div class="card-title">⚙️ Sincronizar Colaboradores</div>
+      <p style="color:var(--text2);font-size:14px;margin-bottom:16px;">
+        Esta acção importa todos os colaboradores activos da tabela <code>collaborators</code> para o fundo.
+        Colaboradores já existentes no fundo não serão duplicados.
+      </p>
+      <div id="sync-resultado" style="display:none;"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;">
+        <button class="btn btn-ghost" onclick="fecharModal('modal-sync')">Cancelar</button>
+        <button class="btn btn-primary" id="btn-sync" onclick="sincronizar()">Importar agora</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="supabase.js"></script>
+  <script src="auth.js"></script>
+  <script src="tema.js"></script>
+  <script src="utils.js"></script>
+  <script src="nav.js"></script>
+  <script>
+    if (!AUTH.exigir()) {}
+    renderNavbar('membros');
+
+    let todosMembros = [];
+    let todosCollabs = [];
+
+    function fmt(v) {
+      return Number(v||0).toLocaleString('pt-MZ', { minimumFractionDigits:2, maximumFractionDigits:2 }) + ' MT';
+    }
+
+    async function carregar() {
+      todosCollabs = await db.query('collaborators', 'active=eq.true&select=id,code,name,department&order=name.asc') || [];
+      const membros = await db.query('fundo_membros', 'select=*') || [];
+
+      const membroMap = {};
+      membros.forEach(m => { membroMap[m.collaborator_id] = m; });
+
+      // Merge: todos os colaboradores activos + info do fundo se existir
+      todosMembros = todosCollabs.map(c => ({
+        ...c,
+        membro: membroMap[c.id] || null,
+        contribui: membroMap[c.id] ? membroMap[c.id].contribui : false,
+        desde: membroMap[c.id] ? membroMap[c.id].desde : null,
+        quota: membroMap[c.id] ? membroMap[c.id].quota_mensal : 100,
+        no_fundo: !!membroMap[c.id]
+      }));
+
+      actualizarKPIs();
+      renderTabela(todosMembros);
+    }
+
+    function actualizarKPIs() {
+      const contrib = todosMembros.filter(m => m.contribui);
+      document.getElementById('kpi-contrib').textContent = contrib.length;
+      document.getElementById('kpi-contrib-val').textContent = 'Fundo activo';
+      document.getElementById('kpi-nao').textContent = todosMembros.filter(m => !m.contribui).length;
+      document.getElementById('kpi-total').textContent = todosMembros.length;
+      document.getElementById('kpi-entrada').textContent = fmt(contrib.length * 100);
+    }
+
+    function filtrar() {
+      const busca  = document.getElementById('inp-busca').value.toLowerCase();
+      const estado = document.getElementById('fil-estado').value;
+      let lista = todosMembros.filter(m => {
+        const textOk = m.name.toLowerCase().includes(busca) || (m.code||'').toLowerCase().includes(busca);
+        const estadoOk = !estado ||
+          (estado === 'contribui' && m.contribui) ||
+          (estado === 'nao' && !m.contribui);
+        return textOk && estadoOk;
+      });
+      renderTabela(lista);
+    }
+
+    function renderTabela(lista) {
+      const tb = document.getElementById('tb-membros');
+      const sem = document.getElementById('sem-resultados');
+      if (!lista.length) {
+        tb.innerHTML = '';
+        sem.style.display = 'block';
+        return;
+      }
+      sem.style.display = 'none';
+      tb.innerHTML = lista.map(m => `
+        <tr>
+          <td><span style="font-size:11px;background:var(--navy3);padding:2px 8px;border-radius:4px;">${m.code||'—'}</span></td>
+          <td><strong>${m.name}</strong></td>
+          <td style="color:var(--text2);font-size:13px;">${m.department||'—'}</td>
+          <td>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+              <input type="checkbox" ${m.contribui?'checked':''} onchange="toggleContribui(${m.id}, this.checked)"
+                style="width:18px;height:18px;cursor:pointer;accent-color:var(--amber);">
+              <span class="badge ${m.contribui?'badge-green':'badge-gray'}">${m.contribui?'Sim':'Não'}</span>
+            </label>
+          </td>
+          <td style="font-size:13px;">${m.desde ? formatarData(m.desde) : '—'}</td>
+          <td style="font-size:13px;">${m.contribui ? fmt(m.quota) : '—'}</td>
+          <td>
+            ${m.no_fundo ? `<button class="btn btn-ghost btn-sm" onclick="verFicha(${m.id})">Ficha</button>` : 
+              `<button class="btn btn-primary btn-sm" onclick="adicionarAoFundo(${m.id})">+ Adicionar</button>`}
+          </td>
+        </tr>`).join('');
+    }
+
+    async function toggleContribui(collaboratorId, contribui) {
+      const membro = todosMembros.find(m => m.id === collaboratorId);
+      if (!membro) return;
+
+      if (!membro.no_fundo) {
+        // Adicionar ao fundo
+        const r = await db.insert('fundo_membros', {
+          collaborator_id: collaboratorId,
+          contribui,
+          desde: dataHoje(),
+          quota_mensal: 100
+        });
+        if (r && !r.error) { mostrarToast('Colaborador adicionado ao fundo!'); await carregar(); }
+      } else {
+        const r = await db.update('fundo_membros', membro.membro.id, { contribui });
+        if (r && !r.error) {
+          mostrarToast(contribui ? 'Marcado como contribuinte.' : 'Marcado como não contribuinte.');
+          await carregar();
+        }
+      }
+    }
+
+    async function adicionarAoFundo(collaboratorId) {
+      const r = await db.insert('fundo_membros', {
+        collaborator_id: collaboratorId,
+        contribui: true,
+        desde: dataHoje(),
+        quota_mensal: 100
+      });
+      if (r && !r.error) { mostrarToast('Adicionado ao fundo!'); await carregar(); }
+    }
+
+    function verFicha(id) {
+      window.location.href = `emprestimos.html?colab=${id}`;
+    }
+
+    function abrirModalSincronizar() {
+      document.getElementById('modal-sync').style.display = 'flex';
+      document.getElementById('sync-resultado').style.display = 'none';
+    }
+
+    async function sincronizar() {
+      const btn = document.getElementById('btn-sync');
+      btn.disabled = true;
+      btn.textContent = 'A importar...';
+
+      const collabs = await db.query('collaborators', 'active=eq.true&select=id') || [];
+      const membros = await db.query('fundo_membros', 'select=collaborator_id') || [];
+      const existentes = new Set(membros.map(m => m.collaborator_id));
+
+      const novos = collabs.filter(c => !existentes.has(c.id));
+      let ok = 0;
+      for (const c of novos) {
+        const r = await db.insert('fundo_membros', {
+          collaborator_id: c.id,
+          contribui: false,
+          desde: dataHoje(),
+          quota_mensal: 100
+        });
+        if (r && !r.error) ok++;
+      }
+
+      const res = document.getElementById('sync-resultado');
+      res.style.display = 'block';
+      res.innerHTML = `<div class="alert alert-success">✅ ${ok} colaboradores importados. ${existentes.size} já existiam.</div>`;
+      btn.textContent = 'Importar agora';
+      btn.disabled = false;
+      await carregar();
+    }
+
+    function fecharModal(id) {
+      document.getElementById(id).style.display = 'none';
+    }
+
+    carregar();
+  </script>
+</body>
+</html>

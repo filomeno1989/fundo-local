@@ -1,36 +1,33 @@
-// nav.js — Danmo Oficina
-// Usa exatamente as classes definidas em style.css (.navbar, .navbar-brand,
-// .navbar-menu, .navbar-user) — o mesmo padrão visual dos outros módulos Danmo.
-
-function renderNavbarOficina(paginaActiva) {
+// nav.js — Fundo Local Danmo
+function renderNavbar(paginaActiva) {
   const nav = document.getElementById('navbar');
   if (!nav) return;
 
   const paginas = [
-    { id: 'dashboard',     label: 'Dashboard',      href: 'dashboard.html' },
-    { id: 'ordens',        label: 'Ordens de Serviço', href: 'ordens.html' },
-    { id: 'equipamentos',  label: 'Equipamentos',   href: 'equipamentos.html' },
-    { id: 'config',        label: 'Config',         href: 'config.html' },
+    { id: 'dashboard',   label: '🏠 Início',       href: 'dashboard.html' },
+    { id: 'membros',     label: '👥 Membros',       href: 'membros.html' },
+    { id: 'emprestimos', label: '💸 Empréstimos',   href: 'emprestimos.html' },
+    { id: 'descontos',   label: '📅 Descontos',     href: 'descontos.html' },
+    { id: 'relatorios',  label: '📊 Relatórios',    href: 'relatorios.html' },
   ];
+
+  const sessao = AUTH.init();
 
   nav.innerHTML = `
     <a href="dashboard.html" class="navbar-brand">
-      <span class="logo-box">DM</span>
+      <span class="logo-box">FL</span>
       <span>
-        <div class="brand-name">Danmo</div>
-        <div class="brand-sub">Oficina</div>
+        <div class="brand-name">Fundo Local</div>
+        <div class="brand-sub">Danmo SS</div>
       </span>
     </a>
     <div class="navbar-menu">
-      ${paginas
-        .map(
-          (p) => `<a href="${p.href}" class="${paginaActiva === p.id ? 'active' : ''}">${p.label}</a>`
-        )
-        .join('')}
+      ${paginas.map(p => `<a href="${p.href}" class="${paginaActiva === p.id ? 'active' : ''}">${p.label}</a>`).join('')}
       <button id="btn-tema-header" onclick="togglePainelTemas()">🎨</button>
     </div>
     <div class="navbar-user">
-      <span>Oficina</span>
+      <span>${sessao ? sessao.nome || sessao.usuario : ''}</span>
+      <button class="btn-sair" onclick="AUTH.logout()">Sair</button>
     </div>
   `;
 }

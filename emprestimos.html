@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Empréstimos — Fundo Local</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <nav class="navbar" id="navbar"></nav>
+  <div id="toast" class="toast"></div>
+
+  <div class="main">
+    <div class="flex-between" style="margin-bottom:24px;">
+      <div>
+        <div class="page-title">💸 Empréstimos & Apoios</div>
+        <div class="page-sub">Registo de todos os pedidos ao fundo</div>
+      </div>
+      <button class="btn btn-primary" onclick="abrirModalNovo()">+ Novo Registo</button>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card" style="padding:16px;margin-bottom:16px;">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+        <input type="text" id="inp-busca" placeholder="🔍 Pesquisar nome ou código..." style="flex:1;min-width:200px;" oninput="filtrar()"/>
+        <select id="fil-estado" onchange="filtrar()" style="width:160px;">
+          <option value="">Todos os estados</option>
+          <option value="activo">Activo</option>
+          <option value="parcial">Parcial</option>
+          <option value="liquidado">Liquidado</option>
+          <option value="anulado">Anulado</option>
+        </select>
+        <select id="fil-tipo" onchange="filtrar()" style="width:180px;">
+          <option value="">Todos os tipos</option>
+          <option value="emprestimo">Empréstimo</option>
+          <option value="assistencia_medica">Assist. Médica</option>
+          <option value="assistencia_funebr">Assist. Fúnebre</option>
+          <option value="outro">Outro</option>
+        </select>
+        <select id="fil-reimb" onchange="filtrar()" style="width:160px;">
+          <option value="">Reembolsável?</option>
+          <option value="sim">✅ Reembolsável</option>
+          <option value="nao">❌ Não reembolsável</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="kpi-grid" style="margin-bottom:20px;">
+      <div class="kpi-card red">
+        <div class="kpi-label">💸 Total em dívida</div>
+        <div class="kpi-value" id="kpi-divida">—</div>
+        <div class="kpi-sub">Saldo devedor actual</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">📋 Empréstimos activos</div>
+        <div class="kpi-value" id="kpi-activos">—</div>
+        <div class="kpi-sub">Activos + parciais</div>
+      </div>
+      <div class="kpi-card green">
+        <div class="kpi-label">✅ Liquidados</div>
+        <div class="kpi-value" id="kpi-liq">—</div>
+        <div class="kpi-sub">Total concluídos</div>
+      </div>
+      <div class="kpi-card blue">
+        <div class="kpi-label">💰 Total concedido</div>
+        <div class="kpi-value" id="kpi-total-conc">—</div>
+        <div class="kpi-sub">Histórico acumulado</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Colaborador</th>
+              <th>Tipo</th>
+              <th>Valor Total</th>
+              <th>Saldo Devedor</th>
+              <th>Parcelas</th>
+              <th>Reimb.?</th>
+              <th>Estado</th>
+              <th>Data</th>
+              <th>Acções</th>
+            </tr>
+          </thead>
+          <tbody id="tb-emprestimos"></tbody>
+        </table>
+      </div>
+      <div id="sem-resultados" style="display:none;text-align:center;padding:32px;color:var(--text2);">
+        Nenhum registo encontrado.
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal novo empréstimo -->
+  <div id="modal-novo" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:500;align-items:center;justify-content:center;">
+    <div class="card" style="width:560px;max-height:90vh;overflow-y:auto;">
+      <div class="card-title">+ Novo Empréstimo / Apoio</div>
+      <div class="form-grid">
+        <div class="form-group" style="grid-column:1/-1;">
+          <label>Colaborador *</label>
+          <select id="sel-colab">
+            <option value="">— Seleccionar —</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Tipo de Apoio *</label>
+          <select id="sel-tipo">
+            <option value="emprestimo">Empréstimo pessoal</option>
+            <option value="assistencia_medica">Assistência médica</option>
+            <option value="assistencia_funebr">Assistência fúnebre</option>
+            <option value="outro">Outro</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Data do Pedido *</label>
+          <input type="date" id="inp-data"/>
+        </div>
+        <div class="form-group">
+          <label>Valor Total (MT) *</label>
+          <input type="number" id="inp-valor" min="0" step="0.01" placeholder="Ex: 3000"/>
+        </div>
+        <div class="form-group">
+          <label>Nº de Parcelas *</label>
+          <input type="number" id="inp-parcelas" min="1" max="24" value="1" oninput="calcParcela()"/>
+        </div>
+        <div class="form-group">
+          <label>Valor por Parcela</label>
+          <input type="text" id="inp-val-parcela" readonly style="background:var(--navy3);color:var(--amber);font-weight:700;"/>
+        </div>
+        <div class="form-group">
+          <label>Reembolsável?</label>
+          <select id="sel-reimb">
+            <option value="true">✅ Sim — desconta no salário</option>
+            <option value="false">❌ Não — valor perdido</option>
+          </select>
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label>Motivo / Observação</label>
+          <textarea id="inp-motivo" rows="3" placeholder="Ex: Despesa médica urgente, falecimento familiar..."></textarea>
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label>Registado por</label>
+          <input type="text" id="inp-criado-por" placeholder="Nome do gestor"/>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
+        <button class="btn btn-ghost" onclick="fecharModal('modal-novo')">Cancelar</button>
+        <button class="btn btn-primary" onclick="guardarEmprestimo()">💾 Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal detalhe / edição estado -->
+  <div id="modal-detalhe" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:500;align-items:center;justify-content:center;">
+    <div class="card" style="width:500px;">
+      <div class="card-title" id="detalhe-titulo">Detalhe</div>
+      <div id="detalhe-corpo"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
+        <button class="btn btn-ghost" onclick="fecharModal('modal-detalhe')">Fechar</button>
+        <button class="btn btn-success" id="btn-liquidar" onclick="liquidar()">✅ Marcar Liquidado</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="supabase.js"></script>
+  <script src="auth.js"></script>
+  <script src="tema.js"></script>
+  <script src="utils.js"></script>
+  <script src="nav.js"></script>
+  <script>
+    if (!AUTH.exigir()) {}
+    renderNavbar('emprestimos');
+
+    let todosEmp = [];
+    let descontosMap = {};
+    let collabMap = {};
+    let empIdActual = null;
+
+    const TIPOS = {
+      emprestimo: 'Empréstimo',
+      assistencia_medica: 'Assist. Médica',
+      assistencia_funebr: 'Assist. Fúnebre',
+      outro: 'Outro'
+    };
+
+    function fmt(v) {
+      return Number(v||0).toLocaleString('pt-MZ', { minimumFractionDigits:2, maximumFractionDigits:2 }) + ' MT';
+    }
+
+    function saldoDevedor(e) {
+      const pago = (descontosMap[e.id]||[]).reduce((s, d) => s + Number(d.valor), 0);
+      return Math.max(0, Number(e.valor_total) - pago);
+    }
+
+    function badgeEstado(estado) {
+      const mapa = { activo:'badge-amber', parcial:'badge-blue', liquidado:'badge-green', anulado:'badge-gray' };
+      return `<span class="badge ${mapa[estado]||'badge-gray'}">${estado}</span>`;
+    }
+
+    async function carregar() {
+      const [emps, descontos, collabs, membros] = await Promise.all([
+        db.query('fundo_emprestimos', 'select=*&order=criado_em.desc'),
+        db.query('fundo_descontos', 'select=emprestimo_id,valor'),
+        db.query('collaborators', 'select=id,code,name,department'),
+        db.query('fundo_membros', 'contribui=eq.true&select=collaborator_id')
+      ]);
+
+      todosEmp = emps || [];
+      collabMap = {};
+      (collabs||[]).forEach(c => { collabMap[c.id] = c; });
+
+      descontosMap = {};
+      (descontos||[]).forEach(d => {
+        if (!descontosMap[d.emprestimo_id]) descontosMap[d.emprestimo_id] = [];
+        descontosMap[d.emprestimo_id].push(d);
+      });
+
+      // Popular select de colaboradores (só membros activos)
+      const membrosSet = new Set((membros||[]).map(m => m.collaborator_id));
+      const sel = document.getElementById('sel-colab');
+      sel.innerHTML = '<option value="">— Seleccionar —</option>';
+      (collabs||[]).filter(c => membrosSet.has(c.id)).sort((a,b) => a.name.localeCompare(b.name)).forEach(c => {
+        sel.innerHTML += `<option value="${c.id}">${c.code} — ${c.name}</option>`;
+      });
+
+      actualizarKPIs();
+      filtrar();
+
+      // Se veio de URL com ?colab=X, filtra automaticamente
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('colab')) {
+        const colab = collabMap[parseInt(params.get('colab'))];
+        if (colab) document.getElementById('inp-busca').value = colab.name;
+        filtrar();
+      }
+    }
+
+    function actualizarKPIs() {
+      const activos = todosEmp.filter(e => ['activo','parcial'].includes(e.estado));
+      const liq = todosEmp.filter(e => e.estado === 'liquidado');
+      const totalDivida = activos.reduce((s, e) => s + saldoDevedor(e), 0);
+      const totalConc = todosEmp.reduce((s, e) => s + Number(e.valor_total), 0);
+      document.getElementById('kpi-divida').textContent = fmt(totalDivida);
+      document.getElementById('kpi-activos').textContent = activos.length;
+      document.getElementById('kpi-liq').textContent = liq.length;
+      document.getElementById('kpi-total-conc').textContent = fmt(totalConc);
+    }
+
+    function filtrar() {
+      const busca = document.getElementById('inp-busca').value.toLowerCase();
+      const estado = document.getElementById('fil-estado').value;
+      const tipo = document.getElementById('fil-tipo').value;
+      const reimb = document.getElementById('fil-reimb').value;
+
+      const lista = todosEmp.filter(e => {
+        const c = collabMap[e.collaborator_id] || {};
+        const textOk = (c.name||'').toLowerCase().includes(busca) || (c.code||'').toLowerCase().includes(busca);
+        const estadoOk = !estado || e.estado === estado;
+        const tipoOk = !tipo || e.tipo === tipo;
+        const reimbOk = !reimb || (reimb === 'sim' ? e.reembolsavel : !e.reembolsavel);
+        return textOk && estadoOk && tipoOk && reimbOk;
+      });
+      renderTabela(lista);
+    }
+
+    function renderTabela(lista) {
+      const tb = document.getElementById('tb-emprestimos');
+      const sem = document.getElementById('sem-resultados');
+      if (!lista.length) { tb.innerHTML = ''; sem.style.display = 'block'; return; }
+      sem.style.display = 'none';
+      tb.innerHTML = lista.map(e => {
+        const c = collabMap[e.collaborator_id] || {};
+        const saldo = saldoDevedor(e);
+        return `<tr>
+          <td><span style="font-size:11px;color:var(--text2);">${c.code||''}</span><br><strong>${c.name||'—'}</strong></td>
+          <td><span class="badge badge-gray">${TIPOS[e.tipo]||e.tipo}</span></td>
+          <td>${fmt(e.valor_total)}</td>
+          <td style="color:${saldo>0?'var(--red)':'var(--green)'}"><strong>${fmt(saldo)}</strong></td>
+          <td style="text-align:center;">${e.num_parcelas}x ${fmt(e.valor_parcela)}</td>
+          <td>${e.reembolsavel ? '<span class="badge badge-green">Sim</span>' : '<span class="badge badge-red">Não</span>'}</td>
+          <td>${badgeEstado(e.estado)}</td>
+          <td style="font-size:12px;">${formatarData(e.data_pedido)}</td>
+          <td style="display:flex;gap:6px;">
+            <button class="btn btn-ghost btn-sm" onclick="verDetalhe(${e.id})">Ver</button>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    function calcParcela() {
+      const val = parseFloat(document.getElementById('inp-valor').value) || 0;
+      const par = parseInt(document.getElementById('inp-parcelas').value) || 1;
+      document.getElementById('inp-val-parcela').value = par > 0 ? fmt(val / par) : '—';
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('inp-valor').addEventListener('input', calcParcela);
+      document.getElementById('inp-data').value = dataHoje();
+      const sessao = AUTH.init();
+      if (sessao) document.getElementById('inp-criado-por').value = sessao.nome || sessao.usuario || '';
+    });
+
+    function abrirModalNovo() {
+      document.getElementById('modal-novo').style.display = 'flex';
+    }
+
+    async function guardarEmprestimo() {
+      const colaboratorId = parseInt(document.getElementById('sel-colab').value);
+      const tipo     = document.getElementById('sel-tipo').value;
+      const data     = document.getElementById('inp-data').value;
+      const valor    = parseFloat(document.getElementById('inp-valor').value);
+      const parcelas = parseInt(document.getElementById('inp-parcelas').value);
+      const reimb    = document.getElementById('sel-reimb').value === 'true';
+      const motivo   = document.getElementById('inp-motivo').value;
+      const criado   = document.getElementById('inp-criado-por').value;
+
+      if (!colaboratorId || !valor || !data) {
+        mostrarToast('Preenche colaborador, valor e data.', 'erro'); return;
+      }
+
+      const r = await db.insert('fundo_emprestimos', {
+        collaborator_id: colaboratorId,
+        tipo, data_pedido: data,
+        valor_total: valor,
+        num_parcelas: parcelas,
+        reembolsavel: reimb,
+        motivo, estado: 'activo',
+        criado_por: criado
+      });
+
+      if (r && !r.error) {
+        // Registar saída na conta do fundo
+        await db.insert('fundo_conta', {
+          data, tipo: 'saida',
+          valor,
+          descricao: `Empréstimo — ${collabMap[colaboratorId]?.name || ''}`,
+          emprestimo_id: r[0]?.id
+        });
+        mostrarToast('Empréstimo registado com sucesso!');
+        fecharModal('modal-novo');
+        await carregar();
+      } else {
+        mostrarToast('Erro ao guardar. Tenta novamente.', 'erro');
+      }
+    }
+
+    function verDetalhe(id) {
+      empIdActual = id;
+      const e = todosEmp.find(x => x.id === id);
+      if (!e) return;
+      const c = collabMap[e.collaborator_id] || {};
+      const saldo = saldoDevedor(e);
+      const pago = Number(e.valor_total) - saldo;
+
+      document.getElementById('detalhe-titulo').textContent = `💸 ${c.name || '—'}`;
+      document.getElementById('detalhe-corpo').innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:14px;">
+          <div><span style="color:var(--text2);">Código</span><br><strong>${c.code||'—'}</strong></div>
+          <div><span style="color:var(--text2);">Tipo</span><br><strong>${TIPOS[e.tipo]||e.tipo}</strong></div>
+          <div><span style="color:var(--text2);">Valor total</span><br><strong>${fmt(e.valor_total)}</strong></div>
+          <div><span style="color:var(--text2);">Já pago</span><br><strong style="color:var(--green);">${fmt(pago)}</strong></div>
+          <div><span style="color:var(--text2);">Saldo devedor</span><br><strong style="color:var(--red);">${fmt(saldo)}</strong></div>
+          <div><span style="color:var(--text2);">Parcelas</span><br><strong>${e.num_parcelas}x ${fmt(e.valor_parcela)}</strong></div>
+          <div><span style="color:var(--text2);">Reembolsável</span><br><strong>${e.reembolsavel ? '✅ Sim' : '❌ Não'}</strong></div>
+          <div><span style="color:var(--text2);">Estado</span><br>${
+            {activo:'<span class="badge badge-amber">Activo</span>',
+             parcial:'<span class="badge badge-blue">Parcial</span>',
+             liquidado:'<span class="badge badge-green">Liquidado</span>',
+             anulado:'<span class="badge badge-gray">Anulado</span>'}[e.estado]||''
+          }</div>
+          <div style="grid-column:1/-1;"><span style="color:var(--text2);">Motivo</span><br><strong>${e.motivo||'—'}</strong></div>
+          <div><span style="color:var(--text2);">Data pedido</span><br><strong>${formatarData(e.data_pedido)}</strong></div>
+          <div><span style="color:var(--text2);">Registado por</span><br><strong>${e.criado_por||'—'}</strong></div>
+        </div>`;
+
+      const btnLiq = document.getElementById('btn-liquidar');
+      btnLiq.style.display = ['activo','parcial'].includes(e.estado) ? 'inline-flex' : 'none';
+      document.getElementById('modal-detalhe').style.display = 'flex';
+    }
+
+    async function liquidar() {
+      if (!empIdActual) return;
+      const r = await db.update('fundo_emprestimos', empIdActual, { estado: 'liquidado' });
+      if (r && !r.error) {
+        mostrarToast('Marcado como liquidado!');
+        fecharModal('modal-detalhe');
+        await carregar();
+      }
+    }
+
+    function fecharModal(id) {
+      document.getElementById(id).style.display = 'none';
+    }
+
+    carregar();
+  </script>
+</body>
+</html>

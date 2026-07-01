@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dashboard — Fundo Local</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <nav class="navbar" id="navbar"></nav>
+  <div id="toast" class="toast"></div>
+
+  <div class="main">
+    <div class="page-title">Dashboard</div>
+    <div class="page-sub" id="sub-data">A carregar...</div>
+
+    <!-- KPIs -->
+    <div class="kpi-grid" id="kpi-grid">
+      <div class="kpi-card green">
+        <div class="kpi-label">💰 Saldo do Fundo</div>
+        <div class="kpi-value" id="kpi-saldo">—</div>
+        <div class="kpi-sub">Entradas menos saídas</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">👥 Membros Activos</div>
+        <div class="kpi-value" id="kpi-membros">—</div>
+        <div class="kpi-sub">A contribuir 100 MT/mês</div>
+      </div>
+      <div class="kpi-card red">
+        <div class="kpi-label">💸 Em Dívida</div>
+        <div class="kpi-value" id="kpi-divida">—</div>
+        <div class="kpi-sub">Empréstimos activos/parciais</div>
+      </div>
+      <div class="kpi-card blue">
+        <div class="kpi-label">⏳ Pendente do RH</div>
+        <div class="kpi-value" id="kpi-pendente-rh">—</div>
+        <div class="kpi-sub">Descontos não reembolsados</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+
+      <!-- Empréstimos recentes -->
+      <div class="card">
+        <div class="card-title">💸 Empréstimos Recentes</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Colaborador</th>
+                <th>Valor</th>
+                <th>Estado</th>
+                <th>Data</th>
+              </tr>
+            </thead>
+            <tbody id="tb-emprestimos"></tbody>
+          </table>
+        </div>
+        <div style="margin-top:12px;">
+          <a href="emprestimos.html" class="btn btn-ghost btn-sm">Ver todos →</a>
+        </div>
+      </div>
+
+      <!-- Movimentos da conta -->
+      <div class="card">
+        <div class="card-title">📋 Últimos Movimentos</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Descrição</th>
+                <th>Tipo</th>
+                <th>Valor</th>
+              </tr>
+            </thead>
+            <tbody id="tb-movimentos"></tbody>
+          </table>
+        </div>
+        <div style="margin-top:12px;">
+          <a href="relatorios.html" class="btn btn-ghost btn-sm">Ver relatório →</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Alertas RH pendentes -->
+    <div class="card" style="margin-top:20px;" id="card-alertas" style="display:none;">
+      <div class="card-title">⚠️ Atenção — Reembolsos Pendentes do RH</div>
+      <div id="lista-alertas"></div>
+    </div>
+  </div>
+
+  <script src="supabase.js"></script>
+  <script src="auth.js"></script>
+  <script src="tema.js"></script>
+  <script src="utils.js"></script>
+  <script src="nav.js"></script>
+  <script>
+    if (!AUTH.exigir()) {}
+
+    renderNavbar('dashboard');
+
+    const MESES = ['','Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+    function fmt(v) {
+      return Number(v || 0).toLocaleString('pt-MZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' MT';
+    }
+
+    function badgeEstado(estado) {
+      const mapa = { activo:'badge-amber', parcial:'badge-blue', liquidado:'badge-green', anulado:'badge-gray' };
+      return `<span class="badge ${mapa[estado]||'badge-gray'}">${estado}</span>`;
+    }
+
+    async function carregarDashboard() {
+      const hoje = new Date();
+      document.getElementById('sub-data').textContent =
+        `Actualizado em ${hoje.toLocaleString('pt-MZ', { dateStyle: 'long', timeStyle: 'short' })}`;
+
+      // Membros activos
+      const membros = await db.query('fundo_membros', 'contribui=eq.true&select=id');
+      document.getElementById('kpi-membros').textContent = Array.isArray(membros) ? membros.length : '—';
+
+      // Saldo (entradas - saídas)
+      const conta = await db.query('fundo_conta', 'select=tipo,valor');
+      if (Array.isArray(conta)) {
+        const entradas = conta.filter(m => m.tipo === 'entrada').reduce((s, m) => s + Number(m.valor), 0);
+        const saidas   = conta.filter(m => m.tipo === 'saida').reduce((s, m)   => s + Number(m.valor), 0);
+        document.getElementById('kpi-saldo').textContent = fmt(entradas - saidas);
+      }
+
+      // Em dívida (empréstimos activos + parciais com saldo devedor)
+      const emprestimos = await db.query('fundo_emprestimos', 'estado=in.(activo,parcial)&select=id,valor_total,collaborator_id');
+      const descontos   = await db.query('fundo_descontos', 'select=emprestimo_id,valor');
+      if (Array.isArray(emprestimos) && Array.isArray(descontos)) {
+        let totalDivida = 0;
+        emprestimos.forEach(e => {
+          const pago = descontos.filter(d => d.emprestimo_id === e.id).reduce((s, d) => s + Number(d.valor), 0);
+          totalDivida += Math.max(0, Number(e.valor_total) - pago);
+        });
+        document.getElementById('kpi-divida').textContent = fmt(totalDivida);
+      }
+
+      // Pendente RH
+      const pendentes = await db.query('fundo_conta', 'tipo=eq.entrada&rh_estado=in.(pendente,parcial)&select=valor');
+      if (Array.isArray(pendentes)) {
+        const total = pendentes.reduce((s, m) => s + Number(m.valor), 0);
+        document.getElementById('kpi-pendente-rh').textContent = fmt(total);
+        if (total > 0) {
+          document.getElementById('card-alertas').style.display = 'block';
+          document.getElementById('lista-alertas').innerHTML = `
+            <div class="alert alert-warning">
+              ⚠️ O RH ainda não reembolsou <strong>${fmt(total)}</strong> em descontos registados.
+              Consulta o <a href="relatorios.html" style="color:var(--amber)">relatório</a> para o detalhe por mês.
+            </div>`;
+        }
+      }
+
+      // Tabela empréstimos recentes
+      const empRecentes = await db.query('fundo_emprestimos',
+        'select=id,valor_total,estado,data_pedido,collaborator_id&order=criado_em.desc&limit=6');
+      const collabs = await db.query('collaborators', 'select=id,name,code');
+      const collabMap = {};
+      if (Array.isArray(collabs)) collabs.forEach(c => { collabMap[c.id] = c; });
+
+      const tbEmp = document.getElementById('tb-emprestimos');
+      if (Array.isArray(empRecentes) && empRecentes.length > 0) {
+        tbEmp.innerHTML = empRecentes.map(e => {
+          const c = collabMap[e.collaborator_id] || {};
+          return `<tr>
+            <td><span style="font-size:12px;color:var(--text2);">${c.code||''}</span><br>${c.name||'—'}</td>
+            <td><strong>${fmt(e.valor_total)}</strong></td>
+            <td>${badgeEstado(e.estado)}</td>
+            <td style="font-size:12px;">${formatarData(e.data_pedido)}</td>
+          </tr>`;
+        }).join('');
+      } else {
+        tbEmp.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text2);padding:20px;">Nenhum empréstimo ainda</td></tr>';
+      }
+
+      // Tabela movimentos recentes
+      const movRecentes = await db.query('fundo_conta', 'select=*&order=criado_em.desc&limit=6');
+      const tbMov = document.getElementById('tb-movimentos');
+      if (Array.isArray(movRecentes) && movRecentes.length > 0) {
+        tbMov.innerHTML = movRecentes.map(m => `<tr>
+          <td style="font-size:12px;">${formatarData(m.data)}</td>
+          <td>${m.descricao}</td>
+          <td><span class="badge ${m.tipo==='entrada'?'badge-green':'badge-red'}">${m.tipo}</span></td>
+          <td><strong style="color:${m.tipo==='entrada'?'var(--green)':'var(--red)'};">${m.tipo==='entrada'?'+':'−'}${fmt(m.valor)}</strong></td>
+        </tr>`).join('');
+      } else {
+        tbMov.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text2);padding:20px;">Sem movimentos</td></tr>';
+      }
+    }
+
+    carregarDashboard();
+  </script>
+</body>
+</html>

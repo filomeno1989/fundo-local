@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Fundo Local — Danmo SS</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-box">
+      <div style="text-align:center;margin-bottom:28px;">
+        <div style="display:inline-flex;align-items:center;justify-content:center;width:56px;height:56px;background:var(--amber);border-radius:14px;font-weight:700;font-size:20px;color:var(--navy);margin-bottom:12px;">FL</div>
+        <div style="font-size:22px;font-weight:700;color:var(--text);">Fundo Local</div>
+        <div style="font-size:13px;color:var(--text2);margin-top:4px;">Danmo SS · Sistema de Gestão</div>
+      </div>
+
+      <div id="erro-login" class="alert alert-danger" style="display:none;"></div>
+
+      <div class="form-group" style="margin-bottom:16px;">
+        <label>Utilizador</label>
+        <input type="text" id="inp-usuario" placeholder="Ex: admin" autocomplete="username"/>
+      </div>
+      <div class="form-group" style="margin-bottom:24px;">
+        <label>Senha</label>
+        <input type="password" id="inp-senha" placeholder="••••••••" autocomplete="current-password"/>
+      </div>
+
+      <button class="btn btn-primary w-100" id="btn-entrar" onclick="fazerLogin()">Entrar</button>
+
+      <div style="text-align:center;margin-top:20px;font-size:12px;color:var(--text2);">
+        Fundo Local Danmo &copy; 2025
+      </div>
+    </div>
+  </div>
+
+  <script src="supabase.js"></script>
+  <script src="auth.js"></script>
+  <script src="tema.js"></script>
+  <script>
+    // Se já tem sessão, vai directo ao dashboard
+    if (AUTH.init()) window.location.href = 'dashboard.html';
+
+    document.getElementById('inp-senha').addEventListener('keydown', e => {
+      if (e.key === 'Enter') fazerLogin();
+    });
+
+    async function fazerLogin() {
+      const usuario = document.getElementById('inp-usuario').value.trim();
+      const senha   = document.getElementById('inp-senha').value;
+      const btn     = document.getElementById('btn-entrar');
+      const erro    = document.getElementById('erro-login');
+
+      if (!usuario || !senha) {
+        erro.textContent = 'Preenche o utilizador e a senha.';
+        erro.style.display = 'flex';
+        return;
+      }
+
+      btn.textContent = 'A entrar...';
+      btn.disabled = true;
+      erro.style.display = 'none';
+
+      const resultado = await AUTH.login(usuario, senha);
+      if (resultado) {
+        window.location.href = 'dashboard.html';
+      } else {
+        erro.textContent = 'Utilizador ou senha incorrectos.';
+        erro.style.display = 'flex';
+        btn.textContent = 'Entrar';
+        btn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
